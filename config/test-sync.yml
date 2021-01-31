@@ -1,0 +1,29 @@
+dataset:
+    name: imagenet
+    root: ~/datasets/ILSVRC2012
+    n_classes: 1000
+
+training:
+    optimizer:
+        name: SGD
+        lr: 0.1
+        weight_decay: 1.0e-4
+        momentum: 0.9
+    lr_schedule:
+        name: multi_step
+        milestones: [150000, 300000]
+        gamma: 0.1
+    train_iters: 15000
+    print_interval: 10
+    val_interval: 1000
+    batch_size: 256
+    num_workers: 8
+    sync_bn: True
+
+validation:
+    batch_size: 64
+    num_workers: 8
+
+model:
+    name: ResNet50
+
