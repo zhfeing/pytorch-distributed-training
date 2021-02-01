@@ -19,7 +19,7 @@ import torch.distributed as dist
 import torch.optim
 import torch.multiprocessing as mp
 from torch.optim import Optimizer
-from torch.utils.data import DataLoader, DistributedSampler, RandomSampler
+from torch.utils.data import DataLoader, DistributedSampler, RandomSampler, SequentialSampler
 from torch.utils.tensorboard import SummaryWriter
 
 from dl_lib.classification.models import get_model
@@ -216,8 +216,13 @@ class Runner:
                 shuffle=True,
                 drop_last=True
             )
+            val_sampler = DistributedSampler(
+                val_dataset,
+                shuffle=False
+            )
         else:
             train_sampler = RandomSampler(train_dataset)
+            val_sampler = SequentialSampler(val_dataset)
 
         train_loader = DataLoader(
             train_dataset,
@@ -230,9 +235,9 @@ class Runner:
         self.val_loader = DataLoader(
             val_dataset,
             batch_size=batch_size,
-            shuffle=False,
             num_workers=n_workers,
-            pin_memory=True
+            pin_memory=True,
+            sampler=val_sampler
         )
         self.logger.info(
             "Load dataset done\nTraining: %d imgs, %d batchs\nEval: %d imgs, %d batchs",
@@ -306,17 +311,21 @@ class Runner:
                 label = label.to(self.device, non_blocking=True)
                 pred = self.model(img)
                 loss = self.loss_fn(pred, label)
-                loss_meter.update(loss)
                 acc_1, acc_5 = accuracy(pred, label, topk=(1, 5))
-                top_1.update(acc_1)
-                top_5.update(acc_5)
-        self.logger.info(
-            "Acc@1: %.4f, Acc@5: %.4f, Loss: %.5f",
-            top_1.value(),
-            top_5.value(),
-            loss_meter.value()
-        )
+                if self.world_size > 1:
+                    dist.all_reduce(loss)
+                    dist.all_reduce(acc_1)
+                    dist.all_reduce(acc_5)
+                loss_meter.update(loss / self.world_size)
+                top_1.update(acc_1 / self.world_size)
+                top_5.update(acc_5 / self.world_size)
         if self.current_rank == 0:
+            self.logger.info(
+                "Acc@1: %.4f, Acc@5: %.4f, Loss: %.5f",
+                top_1.value(),
+                top_5.value(),
+                loss_meter.value()
+            )
             self.tb_writer.add_scalar("eval/Acc@1", top_1.value(), self.iter)
             self.tb_writer.add_scalar("eval/Acc@5", top_5.value(), self.iter)
             self.tb_writer.add_scalar("eval/loss", loss_meter.value(), self.iter)
