@@ -1,3 +1,9 @@
+# PyTorch Distributed Training Example
+
+## Requirements
+* https://github.com/zhfeing/deep-learning-lib
+
+## PyTorch Official Performance
 | Network | Top-1 error | Top-5 error |
 |--|--|--|
 | ResNet-18 | 30.24 | 10.92 |
